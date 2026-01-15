@@ -45,9 +45,15 @@ public class CancelExpiredInvoicesApplicationServiceJdbcImpl implements CancelEx
 
     @Override
     public void cancelExpiredInvoices() {
-        transactionTemplate.execute(status -> {
+        transactionTemplate.execute(_ -> {
             List<UUID> expiredInvoicesIds = fetchExpiredInvoicesIds();
             log.info("Task - Total invoices fetched: {}", expiredInvoicesIds.size());
+
+            if (expiredInvoicesIds.isEmpty()) {
+                log.info("Task - No expired invoices found for cancellation");
+
+                return true;
+            }
 
             int totalCanceledInvoices = updateInvoiceStatus(expiredInvoicesIds);
             log.info("Task - Total invoices canceled: {}", totalCanceledInvoices);
@@ -66,20 +72,26 @@ public class CancelExpiredInvoicesApplicationServiceJdbcImpl implements CancelEx
         return jdbcOperations.query(SELECT_EXPIRED_INVOICES_SQL, preparedStatementSetter, rowMapper);
     }
 
-    private int updateInvoiceStatus(List<UUID> invoicesId) {
-        int updatedInvoices = 0;
+    private int updateInvoiceStatus(List<UUID> invoicesIds) {
+        try {
+            jdbcOperations.batchUpdate(UPDATE_INVOICE_STATUS_SQL,
+                    invoicesIds,
+                    invoicesIds.size(),
+                    (ps, id) -> {
+                        ps.setString(1, CANCELED_STATUS);
+                        ps.setString(2, CANCEL_REASON);
+                        ps.setObject(3, id);
 
-        for (UUID invoiceId: invoicesId) {
-            try {
-                jdbcOperations.update(UPDATE_INVOICE_STATUS_SQL, CANCELED_STATUS, CANCEL_REASON, invoiceId);
-                updatedInvoices += 1;
+                    }
+                );
 
-                log.info("Task - Invoice canceled ID {}", invoiceId);
-            } catch (DataAccessException ex) {
-                log.error("Task - Failed to cancel invoice with ID {}", invoiceId, ex);
-            }
+            log.info("Task - Invoices canceled IDs {}", invoicesIds);
+
+            return invoicesIds.size();
+        } catch (DataAccessException ex) {
+            log.error("Task - Failed to cancel invoices with IDs {}", invoicesIds, ex);
+
+            return 0;
         }
-
-        return updatedInvoices;
     }
 }
