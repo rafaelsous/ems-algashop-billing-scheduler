@@ -6,6 +6,9 @@ spring:
       - aws-secretsmanager:/secret/algashop/billing-scheduler/database?prefix=scheduler.secrets.datasource.
   cloud:
     aws:
+      credentials:
+        access-key: test
+        secret-key: test
       region:
         static: us-east-1
       endpoint: http://algashop-localstack:4566
